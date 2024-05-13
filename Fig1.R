@@ -109,108 +109,70 @@ ggplot(data=plotneg,aes(x=Class,y=Freq,fill=Class))+geom_boxplot()+geom_point(si
   theme(axis.title.x = element_blank(),axis.text.x = element_blank())
 
 #####################################################
-# Fig1 bh dist
-library(distdimscr)
-library(tidyverse)
+#pca
 
-Sobj<-readRDS("/data1/chuxj/project/allCells/AllAnnotated.RDS")
+library(Seurat)
+library(ggplot2)
 
-Sobj<-subset(Sobj,Dataset!="GSE125527")
+setwd("/data1/chuxj/project/allCells")
 
-### T vs. Inf
-cellType<-c("B","Plasma","CD4","CD8","Fib","Mono/Macro","NK","EC")
+dat<-readRDS("AllAnnotated.RDS")
 
-bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
-names(bhatt.dist)<-cellType
-names(bhatt.dist.rand)<-cellType
+dat<-subset(dat,ParentalCluster %in% c("B","CD4","CD8","DC","EC","Fib","Glial","ILC","MAST",
+                                       "Mono/Macro","Plasma","Proliferating Myeloids","NK","Proliferating T"))
 
-for (CT in cellType){
-  
-  for (j in 1:10){
-    
-    set.seed(j)
-    
-    n=length(which(Sobj$Class=="Inflamed" & Sobj$ParentalCluster==CT))
-    cells.T<-sample(colnames(Sobj)[which(Sobj$Class=="T" & Sobj$ParentalCluster==CT)],n)
-    
-    cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="Inflamed"]
+dat1<-subset(dat,Dataset %in% c("C.Smillie","G.Li","GSE132257","GSE132465",
+                                "GSE144735","GSE150115","GSE188711","GSE201349",
+                                "J.Qi","J.Qian","Pelka.K","R.Elmentaite"))
 
-    tmp<-Sobj@reductions$harmony@cell.embeddings
-    
-    cells.Inf.pca <- tmp[cells.Inf,]
-    cells.T.pca <- tmp[cells.T,]
-    
-    for (i in 1:10) {
-      
-      d<-(j-1)*10+i
-      
-      bhatt.dist[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
-      
-      bhatt.dist.rand[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
-      
-    }
-  }
-}
+dat1$Class.Patient=paste(dat1$Class,dat1$Patient,sep = "-")
+tmp<-table(dat1$Class.Patient,dat1$SubCluster)
+tmp<-tmp/apply(tmp,1,sum)
 
-### T vs. Polyp
+mat<-prcomp(tmp)
 
-cellType<-c("B","CD4","CD8","Fib","Mono/Macro")
+pcVar<-summary(mat)
+varPC1<-pcVar$importance[2,1]
+varPC2<-pcVar$importance[2,2]
 
-bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
-names(bhatt.dist)<-cellType
-names(bhatt.dist.rand)<-cellType
+mat<-mat$x[,1:2]
 
-for (CT in cellType){
-  
-  for (j in 1:10){
-    
-    set.seed(j)
-    
-    n=length(which(Sobj$Class=="Polyp" & Sobj$ParentalCluster==CT))
-    cells.T<-sample(colnames(Sobj)[which(Sobj$Class=="T" & Sobj$ParentalCluster==CT)],n)
-    
-    cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="Polyp"]
+mat<-as.data.frame(mat)
 
-    tmp<-Sobj@reductions$harmony@cell.embeddings
-    
-    cells.Inf.pca <- tmp[cells.Inf,]
-    cells.T.pca <- tmp[cells.T,]
-    
-    for (i in 1:10) {
-      
-      d<-(j-1)*10+i
-      
-      bhatt.dist[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
-      
-      bhatt.dist.rand[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
-      
-    }
-  }
-}
+anno<-read.table("/data1/chuxj/project/cellAnno/pat_class_anno.txt",header=T,row.names = 1,sep="\t")
 
-#### Para vs. T
-cellType<-c("B","CD4","CD8","DC","EC","Fib","Glial","ILC","MAST","Mono/Macro","NK")
+anno$Site<-factor(anno$Site,levels=c("left","right"))
 
-bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
-names(bhatt.dist)<-cellType
-names(bhatt.dist.rand)<-cellType
+ol<-intersect(rownames(anno),rownames(mat))
 
-for (CT in cellType){
-  
-  cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="N"]
-  cells.T <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="T"]
-  
-  tmp<-Sobj@reductions$harmony@cell.embeddings
-  
-  cells.Inf.pca <- tmp[cells.Inf,]
-  cells.T.pca <- tmp[cells.T,]
-  
-  set.seed(1)
-  
-  for (i in 1:100) {
-    
-    bhatt.dist[i,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
-    
-    bhatt.dist.rand[i,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
-  }
-}
+mat$Site<-anno[ol,"Site"]
+mat$Dataset<-anno[ol,"Dataset"]
+mat$Class<-anno[ol,"Class"]
+
+col_class<-c("#00ffff","#FF99CC","#FF6600","#02C874","#B766AD","#004897")
+col_Site<-c("#00bbff","#ffb7dd")
+col_Dataset=c(brewer.pal(12,"Set3"),brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+
+mat$Class<-factor(mat$Class,levels=c("Healthy","Uninflamed","Inflamed","N","Polyp","T"))
+
+p1=ggplot(data=mat,aes(x=PC1,y=PC2,color=Class))+geom_point()+scale_color_manual(values = col_class)+theme_classic()+
+  xlab(paste("PC1 explained variance=",varPC1*100,"%",sep=""))+ylab(paste("PC2 explained variance=",varPC2*100,"%",sep=""))
+
+p2=ggplot(data=mat,aes(x=PC1,y=PC2,color=Site))+geom_point()+scale_color_manual(values = col_Site)+theme_classic()+
+  xlab(paste("PC1 explained variance=",varPC1*100,"%",sep=""))+ylab(paste("PC2 explained variance=",varPC2*100,"%",sep=""))
+
+p3=ggplot(data=mat,aes(x=PC1,y=PC2,color=Dataset))+geom_point()+scale_color_manual(values = col_Dataset)+theme_classic()+
+  xlab(paste("PC1 explained variance=",varPC1*100,"%",sep=""))+ylab(paste("PC2 explained variance=",varPC2*100,"%",sep=""))
+
+#distance
+test<-split(mat[,1:2],mat$Class)
+test<-lapply(test,function(w){apply(w,2,mean)})
+test<-do.call(rbind,test)
+
+d<-dist(test)
+
+d<-as.matrix(d)
+
+library(corrplot)
+
+corrplot(d,type="lower",is.corr = FALSE,col.lim=c(0,0.5),addCoef.col="grey55",number.font = 0.05,method = "color")

@@ -1,91 +1,105 @@
-###################################################
-#Fig3 classification
+#######################################################
+#Fig3 scenic
+library(SingleCellExperiment)
+library(SCENIC)
+
+ace<-readRDS("EC_sce.rds")
+
+exprMat <- counts(ace)
+
+cellInfo <- colData(ace)
+
+cellInfo<-data.frame(row.names=rownames(cellInfo),CellType=cellInfo$SubCluster)
+
+saveRDS(cellInfo, file="int/cellInfo.Rds")
+
+exprMat<-as.matrix(exprMat)
+
+data(list="motifAnnotations_hgnc_v9", package="RcisTarget")
+
+motifAnnotations_hgnc <- motifAnnotations_hgnc_v9
+
+scenicOptions <- initializeScenic(org="hgnc", dbDir="/home/chuxj/scenic", nCores=10)
+
+scenicOptions@inputDatasetInfo$cellInfo<-"int/cellInfo.Rds"
+
+saveRDS(scenicOptions, file="int/scenicOptions.Rds")
+
+genesKept <- geneFiltering(exprMat, scenicOptions)
+
+exprMat_filtered <- exprMat[genesKept, ]
+
+runCorrelation(exprMat_filtered, scenicOptions)
+
+exprMat_filtered_log <- log2(exprMat_filtered+1)
+
+runGenie3(exprMat_filtered_log, scenicOptions)
+
+exprMat_log <- log2(exprMat+1)
+
+scenicOptions <- runSCENIC_1_coexNetwork2modules(scenicOptions)
+scenicOptions <- runSCENIC_2_createRegulons(scenicOptions) # Toy run settings
+scenicOptions <- runSCENIC_3_scoreCells(scenicOptions, exprMat_log)
+
+scenicOptions <- runSCENIC_4_aucell_binarize(scenicOptions)
+
+regulonAUC <- loadInt(scenicOptions, "aucell_regulonAUC")
+rss <- calcRSS(AUC=getAUC(regulonAUC), cellAnnotation=cellInfo[colnames(regulonAUC), "CellType"], )
+
+saveRDS(scenicOptions, file="int/scenicOptions.Rds")
+
+#######################################################
+##cell subset co-occurence
+setwd("/data1/chuxj/project/allCells/")
+
+library(Seurat)
+library(ggplot2)
+
+
+dat<-readRDS("AllAnnotated.RDS")
+
+dat<-subset(dat,ParentalCluster %in% c("B","CD4","CD8","DC","EC","Fib","Glial","ILC","MAST",
+                                       "Mono/Macro","Plasma","Proliferating Myeloids","NK","Proliferating T"))
+
+dat1<-subset(dat,Dataset %in% c("C.Smillie","G.Li","GSE132257","GSE132465",
+                                "GSE144735","GSE150115","GSE188711","GSE201349",
+                                "J.Qi","J.Qian","Pelka.K","R.Elmentaite"))
+
+tmp<-table(dat1$Sample,dat1$SubCluster)
+
+Pa<-which(apply(tmp,1,sum)>200)
+tmp<-tmp[Pa,]
+tmp<-tmp/apply(tmp,1,sum)
+
+meta<-read.table("../tmp/sample_anno.txt",header=T,row.names = 1,sep="\t")
+
+library(Hmisc)
+
+tmp<-tmp[,c(1:21,24:29,31:56)]
+
+write.table(tmp,file="Sample_prop.txt",quote=F,sep="\t")
+
+tmp<-read.table("Sample_prop.txt",header=T,row.names = 1,sep="\t")
+
+cor<-rcorr(as.matrix(tmp),type = "spearman")
 
 library(pheatmap)
-library(RColorBrewer)
 
-col=c("white",brewer.pal(9,"Reds"))
-col<-c(brewer.pal(9,"RdBu"))
+col=c(rev(brewer.pal(9,"Blues")),"White",brewer.pal(9,"Reds"))
 
-col_test<-c(col[1:2],"white",col[8:9])
+p0=pheatmap(cor$r,breaks = seq(-1,1,0.1),color = col,clustering_method = "ward.D")
 
-pat_meta<-read.table("/data1/chuxj/project/cellAnno/pat_fullAnno.txt",sep="\t",header=T,row.names = 1)
+#####
+meta<-meta[rownames(tmp),]
+Imm1<-tmp[which(meta$Class=="T"),]
+Imm2<-tmp[which(meta$Class=="N"),]
 
+####
+Imm_cor1<-rcorr(as.matrix(Imm1),type = "spearman")
+Imm_cor2<-rcorr(as.matrix(Imm2),type = "spearman")
 
-pat_meta<-pat_meta[which(pat_meta$Dataset%in% c("GSE132257","GSE132465","GSE144735","GSE188711"
-                                                ,"GSE201349","J.Qi","J.Qian","Pelka.K")),]
+col=c(rev(brewer.pal(9,"Blues")),"White",brewer.pal(9,"Reds"))
 
-mat<-read.table("../cellModule/classification/allcells/Patient_proportion_matrix_allcells.txt",header=T,row.names = 1,sep="\t")
+p1=pheatmap(Imm_cor1$r,breaks = seq(-1,1,0.1),color = col,clustering_method = "ward.D")
+p2=pheatmap(Imm_cor2$r,breaks = seq(-1,1,0.1),color = col,cluster_rows = p1$tree_row,cluster_cols = p1$tree_col)
 
-
-ol<-intersect(names(mat),rownames(pat_meta))
-
-mat<-mat[,ol]
-
-anno<-data.frame(CellType=rep(NA,nrow(mat)),MajorCellType=rep(NA,nrow(mat)),row.names =rownames(mat) )
-anno$CellType[1:5]<-"CD4 T"
-anno$CellType[6:11]<-"CD8 T"
-anno$CellType[13:14]<-"NK"
-anno$CellType[16:21]<-"B"
-anno$CellType[22:33]<-"Myeloid cells"
-anno$MajorCellType[1:33]<-"CD45pos"
-
-anno$CellType[34:45]<-"EC"
-anno$CellType[46:55]<-"Fib"
-anno$MajorCellType[34:56]<-"CD45neg"
-
-mycol_MajorCellType=c("#3b6799","#d5ba91")
-mycol_CellType=brewer.pal(n=8,"Dark2")
-
-names(mycol_MajorCellType)<-as.character(unique(anno$MajorCellType))
-names(mycol_CellType)<-as.character(unique(anno$CellType))
-
-annotation_colors<-list(MajorCellType=mycol_MajorCellType,CellType=mycol_CellType)
-
-mat<-mat[c(1:11,13:17,19:32,34:37,40:44,46:50,53:56),]
-anno<-anno[c(1:11,13:17,19:32,34:37,40:44,46:50,53:56),]
-
-col=colorRampPalette(rev(col_test))(50)
-
-p=pheatmap::pheatmap(as.matrix(mat),clustering_method = "ward.D",scale = "row",color = col
-                     ,show_colnames = F,annotation_row = anno)
-
-###################################################
-#Fig3 cellchat
-library(dplyr)
-library(Seurat)
-library(patchwork)
-library(CellChat)
-
-Sobject<-readRDS("TumorSample_add6Group.RDS")
-
-Sobject<-subset(Sobject,ParentalCluster %in% c("B","CD4","CD8","DC","EC","Fib"
-                                               ,"Malignant cells","Mono/Macro","NK","Plasma"))
-
-for (i in c(1,2,3,4,5,6)){
-  
-  message(paste0("Processing G",i))
-  
-  tmp<-subset(Sobject,Group == i)
-  
-  data.input <- GetAssayData(tmp, assay = "RNA", slot = "data") # normalized data matrix
-  labels <- tmp$ParentalCluster
-  meta <- data.frame(CellType = labels, row.names = names(labels)) # create a dataframe of the cell labels
-  
-  cellchat <- createCellChat(object = data.input, meta = meta, group.by = "CellType")
-  
-  CellChatDB <-CellChatDB.human
-  CellChatDB.use <- CellChatDB
-  cellchat@DB <- CellChatDB.use
-  
-  cellchat <- subsetData(cellchat)
-  cellchat <- identifyOverExpressedGenes(cellchat)
-  cellchat <- identifyOverExpressedInteractions(cellchat)
-  
-  cellchat <- computeCommunProb(cellchat)
-  cellchat <- filterCommunication(cellchat, min.cells = 10)
-##note! use a low threshold here, and filter results afterwards
-  
-  df.net <- subsetCommunication(cellchat)
-  
-}

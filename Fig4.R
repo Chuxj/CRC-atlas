@@ -1,103 +1,135 @@
-##################################
-#Fig4 MeanZscore
-
-Sobject<-readRDS("TumorSample_add6Group.RDS")
-
-Sobject<-subset(Sobject,Group %in% c(1,2,3,4,5,6))
-
-Idents(Sobject)<-"Group"
+###################################################
+#Fig4 classification
 
 library(pheatmap)
 library(RColorBrewer)
 
+col=c("white",brewer.pal(9,"Reds"))
 col<-c(brewer.pal(9,"RdBu"))
-col=colorRampPalette(col)(100)
 
-#####CD8
-gene=c("BTLA","TNFRSF18","CTLA4","TIGIT","PDCD1","HAVCR2","LAG3")
+col_test<-c(col[1:2],"white",col[8:9])
 
-mat<-FetchData(subset(Sobject,ParentalCluster=="CD8"),vars = c(gene,"Group"))
-test<-apply(mat[,-ncol(mat)],2,scale)
-rownames(test)<-rownames(mat)
-test<-as.data.frame(test)
-x<-split(test,mat$Group)
-x2<-lapply(x, function(w){apply(w,2,mean)})
-x<-do.call(rbind,x2)
+pat_meta<-read.table("/data1/chuxj/project/cellAnno/pat_fullAnno.txt",sep="\t",header=T,row.names = 1)
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
 
-#####malignant
-gene=c("CD274","PDCD1LG2","CD47")
+pat_meta<-pat_meta[which(pat_meta$Dataset%in% c("GSE132257","GSE132465","GSE144735","GSE188711"
+                                                ,"GSE201349","J.Qi","J.Qian","Pelka.K")),]
 
-mat<-FetchData(subset(Sobject,SubCluster=="Malignant cells"),vars = c(gene,"Group"))
-test<-apply(mat[,-ncol(mat)],2,scale)
-rownames(test)<-rownames(mat)
-test<-as.data.frame(test)
-x<-split(test,mat$Group)
-x2<-lapply(x, function(w){apply(w,2,mean)})
-x<-do.call(rbind,x2)
+mat<-read.table("../cellModule/classification/allcells/Patient_proportion_matrix_allcells.txt",header=T,row.names = 1,sep="\t")
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
 
-#####Macroph
-gene=c("SIRPA","FCGR1A","FCGR2A","FCGR2B","FCGR3A","FCGR3B")
+ol<-intersect(names(mat),rownames(pat_meta))
 
-mat<-FetchData(subset(Sobject,SubCluster %in% c("Macro-C1QC","Macro-ISG15","Macro-LYVE1",
-                                                "Macro-SPP1")),vars = c(gene,"Group"))
-test<-apply(mat[,-ncol(mat)],2,scale)
-rownames(test)<-rownames(mat)
-test<-as.data.frame(test)
-x<-split(test,mat$Group)
-x2<-lapply(x, function(w){apply(w,2,mean)})
-x<-do.call(rbind,x2)
+mat<-mat[,ol]
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
+anno<-data.frame(CellType=rep(NA,nrow(mat)),MajorCellType=rep(NA,nrow(mat)),row.names =rownames(mat) )
+anno$CellType[1:5]<-"CD4 T"
+anno$CellType[6:11]<-"CD8 T"
+anno$CellType[13:14]<-"NK"
+anno$CellType[16:21]<-"B"
+anno$CellType[22:33]<-"Myeloid cells"
+anno$MajorCellType[1:33]<-"CD45pos"
 
-##################################
-#Fig4 CD8-CXCL13, CD4-CXCL13
+anno$CellType[34:45]<-"EC"
+anno$CellType[46:55]<-"Fib"
+anno$MajorCellType[34:56]<-"CD45neg"
+
+mycol_MajorCellType=c("#3b6799","#d5ba91")
+mycol_CellType=brewer.pal(n=8,"Dark2")
+
+names(mycol_MajorCellType)<-as.character(unique(anno$MajorCellType))
+names(mycol_CellType)<-as.character(unique(anno$CellType))
+
+annotation_colors<-list(MajorCellType=mycol_MajorCellType,CellType=mycol_CellType)
+
+mat<-mat[c(1:11,13:17,19:32,34:37,40:44,46:50,53:56),]
+anno<-anno[c(1:11,13:17,19:32,34:37,40:44,46:50,53:56),]
+
+col=colorRampPalette(rev(col_test))(50)
+
+p=pheatmap::pheatmap(as.matrix(mat),clustering_method = "ward.D",scale = "row",color = col
+                     ,show_colnames = F,annotation_row = anno)
+
+###################################################
+#Fig4 cellchat
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(CellChat)
+
+Sobject<-readRDS("TumorSample_add6Group.RDS")
+
+Sobject<-subset(Sobject,ParentalCluster %in% c("B","CD4","CD8","DC","EC","Fib"
+                                               ,"Malignant cells","Mono/Macro","NK","Plasma"))
+
+for (i in c(1,2,3,4,5,6)){
+  
+  message(paste0("Processing G",i))
+  
+  tmp<-subset(Sobject,Group == i)
+  
+  data.input <- GetAssayData(tmp, assay = "RNA", slot = "data") # normalized data matrix
+  labels <- tmp$ParentalCluster
+  meta <- data.frame(CellType = labels, row.names = names(labels)) # create a dataframe of the cell labels
+  
+  cellchat <- createCellChat(object = data.input, meta = meta, group.by = "CellType")
+  
+  CellChatDB <-CellChatDB.human
+  CellChatDB.use <- CellChatDB
+  cellchat@DB <- CellChatDB.use
+  
+  cellchat <- subsetData(cellchat)
+  cellchat <- identifyOverExpressedGenes(cellchat)
+  cellchat <- identifyOverExpressedInteractions(cellchat)
+  
+  cellchat <- computeCommunProb(cellchat)
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+##note! use a low threshold here, and filter results afterwards
+  
+  df.net <- subsetCommunication(cellchat)
+  
+}
+
+###########
+##EMT and TGFB signaling score
+
+setwd("/data1/chuxj/project/otherClassification")
+
+count<-read.table("psudobulk.txt",header=T,row.names = 1,sep="\t")
+
+anno_pat<-read.table("/data1/chuxj/project/cellModule/classification/Patient_Group6.txt",header=T,row.names = 1,sep="\t",check.names = F)
+
+ol<-intersect(names(count),rownames(anno_pat))
+
+count<-count[,ol]
+anno_pat<-anno_pat[ol,]
+anno_pat<-as.data.frame(anno_pat)
+names(anno_pat)<-"Group"
+rownames(anno_pat)<-ol
 
 library(Seurat)
+Sobj<-CreateSeuratObject(count,meta.data = anno_pat)
+Sobj<-NormalizeData(Sobj)
 
-Sobj<-readRDS("AllAnnotated.RDS")
+GO_EMT<-read.table("../classification/EMT_TGFB/GOBP_EPITHELIAL_TO_MESENCHYMAL_TRANSITION.txt")
 
-c1<-subset(Sobj,ParentalCluster=="CD8")
-c2<-subset(Sobj,ParentalCluster=="CD4")
+GO_TGFB<-read.table("../classification/EMT_TGFB/GOBP_TRANSFORMING_GROWTH_FACTOR_BETA_ACTIVATION.txt")
 
-Idents(c1)<-"SubCluster"
-Idents(c2)<-"SubCluster"
+######
+glist<-list(GO_EMT=GO_EMT$V1,GO_TGFB=GO_TGFB$V1)
 
-c1.markers <- FindMarkers(c1, ident.1 = "CD8-CXCL13", ident.2 = "CD8-IL7R", min.pct = 0.25,logfc.threshold = 0)
-c2.markers <- FindMarkers(c2, ident.1 = "CD4-CXCL13", ident.2 = "CD4-CCR7", min.pct = 0.25,logfc.threshold = 0)
+Sobj<-AddModuleScore(Sobj,glist)
 
-ol<-intersect(rownames(c1.markers),rownames(c2.markers))
+tmp<-FetchData(Sobj,vars = c("Cluster1","Cluster2","Group"))
 
-plot<-data.frame(c1=c1.markers[ol,"avg_log2FC"],c2=c2.markers[ol,"avg_log2FC"],
-                 c1p=c1.markers[ol,"p_val_adj"],c2p=c2.markers[ol,"p_val_adj"])
-rownames(plot)<-ol
+names(tmp)<-c("GO_EMT","GO_TGFB","Group")
 
-library(ggplot2)
-library(ggrepel)
+tmp$Group<-factor(tmp$Group,levels = c(1,2,3,4,5,6))
 
-plot<-transform(plot,gene=rownames(plot))
+comparisons=list(c(1,2),c(1,3),c(1,4),c(1,5),c(1,6))
 
-plot$add<-"No"
-plot$add[which(plot$gene=="TIGIT")]<-"Yes"
-plot$add[which(plot$gene=="PDCD1")]<-"Yes"
-plot$add[which(plot$gene=="CXCL13")]<-"Yes"
-plot$add[which(plot$gene=="TNFRSF18")]<-"Yes"
-plot$add[which(plot$gene=="CTLA4")]<-"Yes"
+p1=ggplot(tmp,aes(x=Group,y=GO_EMT,color=Group))+geom_boxplot()+theme_classic()+geom_jitter(size=0.5)+scale_color_manual(values = c("#8f5362","#d37b6d","#9c8207","#f6df56","#79b4a0","#706d94"))+
+  stat_compare_means(comparisons = comparisons,method = "t.test")
 
-options(ggrepel.max.overlaps = Inf)
-
-ggplot(plot,aes(x=c1,y=c2,color=add))+geom_point(alpha=0.6)+theme_classic()+ylim(-2.5,4)+xlim(-2.5,4)+
-  geom_hline(yintercept = 0,lty="dashed",color="grey56")+
-  geom_vline(xintercept = 0,lty="dashed",color="grey56")+
-  geom_smooth(method='lm',color="#bd706e")+
-  geom_text_repel(aes(label = ifelse(add  == "Yes", as.character(gene), '')))+
-  scale_colour_manual(name = "add", 
-                      values = c("Yes" = "#b2182b","No"="#2166ac"))+
-  theme(legend.position = "None")+
-  ylab("Average LFC in CD4-CXCL13") +
-  xlab("Average LFC in CD8-CXCL13")
-
-cor.test(plot$c1,plot$c2)
+p2=ggplot(tmp,aes(x=Group,y=GO_TGFB,color=Group))+geom_boxplot()+theme_classic()+geom_jitter(size=0.5)+scale_color_manual(values = c("#8f5362","#d37b6d","#9c8207","#f6df56","#79b4a0","#706d94"))+
+  stat_compare_means(comparisons = comparisons,method = "t.test")

@@ -1,4 +1,112 @@
-#######################################################
+#####################################################
+# Fig2 bh dist
+library(distdimscr)
+library(tidyverse)
+
+Sobj<-readRDS("AllAnnotated.RDS")
+
+#remove dataset with only CD45+
+Sobj<-subset(Sobj,Dataset!="GSE125527")
+
+### T vs. Inf
+cellType<-c("B","Plasma","CD4","CD8","Fib","Mono/Macro","NK","EC")
+
+bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
+names(bhatt.dist)<-cellType
+names(bhatt.dist.rand)<-cellType
+
+for (CT in cellType){
+  
+  for (j in 1:10){
+    
+    set.seed(j)
+    
+    n=length(which(Sobj$Class=="Inflamed" & Sobj$ParentalCluster==CT))
+    cells.T<-sample(colnames(Sobj)[which(Sobj$Class=="T" & Sobj$ParentalCluster==CT)],n)
+    
+    cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="Inflamed"]
+    
+    tmp<-Sobj@reductions$harmony@cell.embeddings
+    
+    cells.Inf.pca <- tmp[cells.Inf,]
+    cells.T.pca <- tmp[cells.T,]
+    
+    for (i in 1:10) {
+      
+      d<-(j-1)*10+i
+      
+      bhatt.dist[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
+      
+      bhatt.dist.rand[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
+      
+    }
+  }
+}
+
+### T vs. Polyp
+
+cellType<-c("B","CD4","CD8","Fib","Mono/Macro")
+
+bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
+names(bhatt.dist)<-cellType
+names(bhatt.dist.rand)<-cellType
+
+for (CT in cellType){
+  
+  for (j in 1:10){
+    
+    set.seed(j)
+    
+    n=length(which(Sobj$Class=="Polyp" & Sobj$ParentalCluster==CT))
+    cells.T<-sample(colnames(Sobj)[which(Sobj$Class=="T" & Sobj$ParentalCluster==CT)],n)
+    
+    cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="Polyp"]
+    
+    tmp<-Sobj@reductions$harmony@cell.embeddings
+    
+    cells.Inf.pca <- tmp[cells.Inf,]
+    cells.T.pca <- tmp[cells.T,]
+    
+    for (i in 1:10) {
+      
+      d<-(j-1)*10+i
+      
+      bhatt.dist[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
+      
+      bhatt.dist.rand[d,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
+      
+    }
+  }
+}
+
+#### Para vs. T
+cellType<-c("B","CD4","CD8","DC","EC","Fib","Glial","ILC","MAST","Mono/Macro","NK")
+
+bhatt.dist <- bhatt.dist.rand <- as.data.frame(matrix(NA,ncol=length(cellType),nrow = 100))
+names(bhatt.dist)<-cellType
+names(bhatt.dist.rand)<-cellType
+
+for (CT in cellType){
+  
+  cells.Inf <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="N"]
+  cells.T <- colnames(Sobj)[Sobj$ParentalCluster==CT & Sobj$Class=="T"]
+  
+  tmp<-Sobj@reductions$harmony@cell.embeddings
+  
+  cells.Inf.pca <- tmp[cells.Inf,]
+  cells.T.pca <- tmp[cells.T,]
+  
+  set.seed(1)
+  
+  for (i in 1:100) {
+    
+    bhatt.dist[i,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=FALSE)
+    
+    bhatt.dist.rand[i,CT] <- dim_dist(embed_mat_x=cells.Inf.pca,embed_mat_y=cells.T.pca,dims_use=1:30,num_cells_sample=50,distance_metric="bhatt_dist",random_sample=TRUE)
+  }
+}
+
+#####################################################
 #Fig2 roe
 
 ROIE <- function(crosstab){
@@ -19,55 +127,5 @@ ROIE <- function(crosstab){
   colnames(roie) <- colnames(crosstab)
   return(roie)
 }
-
-#######################################################
-#Fig2 scenic
-library(SingleCellExperiment)
-library(SCENIC)
-
-ace<-readRDS("EC_sce.rds")
-
-exprMat <- counts(ace)
-
-cellInfo <- colData(ace)
-
-cellInfo<-data.frame(row.names=rownames(cellInfo),CellType=cellInfo$SubCluster)
-
-saveRDS(cellInfo, file="int/cellInfo.Rds")
-
-exprMat<-as.matrix(exprMat)
-
-data(list="motifAnnotations_hgnc_v9", package="RcisTarget")
-
-motifAnnotations_hgnc <- motifAnnotations_hgnc_v9
-
-scenicOptions <- initializeScenic(org="hgnc", dbDir="/home/chuxj/scenic", nCores=10)
-
-scenicOptions@inputDatasetInfo$cellInfo<-"int/cellInfo.Rds"
-
-saveRDS(scenicOptions, file="int/scenicOptions.Rds")
-
-genesKept <- geneFiltering(exprMat, scenicOptions)
-
-exprMat_filtered <- exprMat[genesKept, ]
-
-runCorrelation(exprMat_filtered, scenicOptions)
-
-exprMat_filtered_log <- log2(exprMat_filtered+1)
-
-runGenie3(exprMat_filtered_log, scenicOptions)
-
-exprMat_log <- log2(exprMat+1)
-
-scenicOptions <- runSCENIC_1_coexNetwork2modules(scenicOptions)
-scenicOptions <- runSCENIC_2_createRegulons(scenicOptions) # Toy run settings
-scenicOptions <- runSCENIC_3_scoreCells(scenicOptions, exprMat_log)
-
-scenicOptions <- runSCENIC_4_aucell_binarize(scenicOptions)
-
-regulonAUC <- loadInt(scenicOptions, "aucell_regulonAUC")
-rss <- calcRSS(AUC=getAUC(regulonAUC), cellAnnotation=cellInfo[colnames(regulonAUC), "CellType"], )
-
-saveRDS(scenicOptions, file="int/scenicOptions.Rds")
 
 
