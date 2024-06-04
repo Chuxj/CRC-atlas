@@ -24,7 +24,7 @@ x<-split(test,mat$Group)
 x2<-lapply(x, function(w){apply(w,2,mean)})
 x<-do.call(rbind,x2)
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
+pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),breaks=seq(-1.8,1.8,0.036))
 
 #####malignant
 gene=c("CD274","PDCD1LG2","CD47")
@@ -37,7 +37,7 @@ x<-split(test,mat$Group)
 x2<-lapply(x, function(w){apply(w,2,mean)})
 x<-do.call(rbind,x2)
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
+pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),breaks=seq(-1.8,1.8,0.036))
 
 #####Macroph
 gene=c("SIRPA","FCGR1A","FCGR2A","FCGR2B","FCGR3A","FCGR3B")
@@ -51,7 +51,7 @@ x<-split(test,mat$Group)
 x2<-lapply(x, function(w){apply(w,2,mean)})
 x<-do.call(rbind,x2)
 
-pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),scale = "row",breaks=seq(-1.8,1.8,0.036))
+pheatmap(t(x),cluster_rows = F,cluster_cols = F,color=rev(col),breaks=seq(-1.8,1.8,0.036))
 
 ##################################
 #Fig5 CD8-CXCL13, CD4-CXCL13
